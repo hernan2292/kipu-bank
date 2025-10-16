@@ -30,24 +30,6 @@ contract KipuBank {
     /// @dev Mapping from user address to their vault balance
     mapping(address => uint256) public vaults;
 
-    // ========== EVENTS ==========
-
-    /**
-     * @dev Emitted when a user makes a deposit
-     * @param user The address of the user making the deposit
-     * @param amount The amount deposited
-     * @param newBalance The user's new vault balance
-     */
-    event Deposit(address indexed user, uint256 amount, uint256 newBalance);
-
-    /**
-     * @dev Emitted when a user makes a withdrawal
-     * @param user The address of the user making the withdrawal
-     * @param amount The amount withdrawn
-     * @param newBalance The user's new vault balance
-     */
-    event Withdrawal(address indexed user, uint256 amount, uint256 newBalance);
-
     // ========== CUSTOM ERRORS ==========
 
     /// @dev Thrown when deposit amount is zero
@@ -68,7 +50,39 @@ contract KipuBank {
     /// @dev Thrown when ETH transfer fails
     error TransferFailed();
 
+    /// @dev Thrown when bank cap is invalid (zero or too small)
+    error InvalidBankCap();
+
+    /// @dev Thrown when withdrawal limit is invalid (zero or exceeds bank cap)
+    error InvalidWithdrawalLimit();
+
+    // ========== EVENTS ==========
+
+    /**
+     * @dev Emitted when a user makes a deposit
+     * @param user The address of the user making the deposit
+     * @param amount The amount deposited
+     * @param newBalance The user's new vault balance
+     */
+    event Deposit(address indexed user, uint256 amount, uint256 newBalance);
+
+    /**
+     * @dev Emitted when a user makes a withdrawal
+     * @param user The address of the user making the withdrawal
+     * @param amount The amount withdrawn
+     * @param newBalance The user's new vault balance
+     */
+    event Withdrawal(address indexed user, uint256 amount, uint256 newBalance);
+
     // ========== MODIFIERS ==========
+
+    /**
+     * @dev Modifier to check if the deposit amount is valid
+     */
+    modifier validDeposit() {
+        if (msg.value == 0) revert ZeroDepositAmount();
+        _;
+    }
 
     /**
      * @dev Modifier to check if the withdrawal amount is valid
@@ -89,6 +103,10 @@ contract KipuBank {
      * @param _bankCap Maximum total deposits allowed in the bank
      */
     constructor(uint256 _withdrawalLimit, uint256 _bankCap) {
+        if (_bankCap == 0) revert InvalidBankCap();
+        if (_withdrawalLimit == 0) revert InvalidWithdrawalLimit();
+        if (_withdrawalLimit > _bankCap) revert InvalidWithdrawalLimit();
+
         WITHDRAWAL_LIMIT = _withdrawalLimit;
         BANK_CAP = _bankCap;
     }
@@ -99,13 +117,13 @@ contract KipuBank {
      * @dev Allows users to deposit ETH into their personal vault
      * @notice The deposit amount is sent as msg.value
      */
-    function deposit() external payable {
-        if (msg.value == 0) revert ZeroDepositAmount();
+    function deposit() external payable validDeposit {
+        if (totalDeposits + msg.value > BANK_CAP) revert BankCapExceeded();
 
-        uint256 newTotalDeposits = totalDeposits + msg.value;
-        if (newTotalDeposits > BANK_CAP) revert BankCapExceeded();
-
-        _updateDepositState(msg.sender, msg.value, newTotalDeposits);
+        unchecked {
+            uint256 newTotalDeposits = totalDeposits + msg.value;
+            _updateDepositState(msg.sender, msg.value, newTotalDeposits);
+        }
     }
 
     /**
@@ -114,11 +132,21 @@ contract KipuBank {
      */
     function withdraw(uint256 amount) external validWithdrawal(amount) {
         uint256 currentBalance = vaults[msg.sender];
-        uint256 newBalance = currentBalance - amount;
+        uint256 newBalance;
+
+        unchecked {
+            // Safe: validWithdrawal modifier already checked currentBalance >= amount
+            newBalance = currentBalance - amount;
+        }
 
         vaults[msg.sender] = newBalance;
-        totalDeposits -= amount;
-        withdrawalCount++;
+
+        unchecked {
+            // Safe: totalDeposits >= amount (guaranteed by vault balance check)
+            totalDeposits -= amount;
+            // Safe: withdrawalCount will never realistically overflow
+            withdrawalCount++;
+        }
 
         _safeTransfer(msg.sender, amount);
 
@@ -143,11 +171,15 @@ contract KipuBank {
      * @param newTotalDeposits The new total deposits amount
      */
     function _updateDepositState(address user, uint256 amount, uint256 newTotalDeposits) private {
-        vaults[user] += amount;
+        uint256 newBalance = vaults[user] + amount;
+        vaults[user] = newBalance;
         totalDeposits = newTotalDeposits;
-        depositCount++;
 
-        emit Deposit(user, amount, vaults[user]);
+        unchecked {
+            depositCount++;
+        }
+
+        emit Deposit(user, amount, newBalance);
     }
 
     /**
