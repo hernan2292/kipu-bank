@@ -74,9 +74,13 @@ KipuBank is a decentralized banking contract that provides the following functio
 
 ## 📜 Smart Contract Address
 
-**Deployed Contract Address**: `0x79D6f42a93F21859d028a2665dB1e81A081db023`
+**Deployed Contract Address**: `0xb3cda6fdf17f04733789b9c801670ce2fb0278e7`
+**Validated In**: `Etherscan`
 **Network**: `Sepolia`
-**Block Explorer**: `https://sepolia.etherscan.io/address/0x79d6f42a93f21859d028a2665db1e81a081db023`
+**Block Explorer**: `https://sepolia.etherscan.io/address/0xb3cda6fdf17f04733789b9c801670ce2fb0278e7`
+
+
+**Old Deployed Contract Address**: `0x79D6f42a93F21859d028a2665dB1e81A081db023`
 
 ## 📝 License
 
